@@ -5,27 +5,20 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 
 	"github.com/yourname/moodle/internal/auth"
-	"github.com/yourname/moodle/internal/cache"
 	"github.com/yourname/moodle/internal/models"
-	"github.com/yourname/moodle/internal/store"
-	"github.com/yourname/moodle/internal/tmdb"
+	"github.com/yourname/moodle/internal/services"
 	"github.com/yourname/moodle/internal/validate"
 )
 
-type WatchlistHandler struct {
-	Store     *store.Store
-	TMDB      *tmdb.Client
-	FeedCache *cache.TTLCache[string, []byte]
-}
+type WatchlistHandler struct{ Service *services.WatchlistService }
 
-func NewWatchlistHandler(s *store.Store, t *tmdb.Client) *WatchlistHandler {
-	return &WatchlistHandler{Store: s, TMDB: t, FeedCache: cache.NewTTL[string, []byte](60 * time.Second)}
+func NewWatchlistHandler(s *services.WatchlistService) *WatchlistHandler {
+	return &WatchlistHandler{Service: s}
 }
 
 // Routes is mounted under /watchlists in main.
@@ -52,7 +45,7 @@ func (h *WatchlistHandler) SearchMovies(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	res, err := h.TMDB.SearchMovies(r.Context(), q, page)
+	res, err := h.Service.SearchMovies(r.Context(), q, page)
 	if err != nil {
 		w.WriteHeader(http.StatusBadGateway)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -77,7 +70,7 @@ func (h *WatchlistHandler) Movie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mv, err := h.TMDB.GetMovie(r.Context(), id)
+	mv, err := h.Service.GetMovie(r.Context(), id)
 	if err != nil {
 		w.WriteHeader(http.StatusBadGateway)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -103,7 +96,7 @@ func (h *WatchlistHandler) Trending(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(errs)
 		return
 	}
-	lists, err := h.Store.TopWatchlists(r.Context(), q.Window, q.Limit)
+	lists, err := h.Service.TrendingWatchlists(r.Context(), q.Window, q.Limit)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -114,18 +107,17 @@ func (h *WatchlistHandler) Trending(w http.ResponseWriter, r *http.Request) {
 
 func (h *WatchlistHandler) get(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	wl, err := h.Store.GetWatchlist(r.Context(), id)
+	uid := auth.UserID(r.Context())
+	wl, err := h.Service.GetWatchlist(r.Context(), id, uid)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		switch {
+		case errors.Is(err, services.ErrForbidden):
 			w.WriteHeader(http.StatusNotFound)
-		} else {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			w.WriteHeader(http.StatusNotFound)
+		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
-		return
-	}
-	uid := auth.UserID(r.Context())
-	if !wl.IsPublic && wl.OwnerID != uid {
-		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(wl)
@@ -142,15 +134,7 @@ func (h *WatchlistHandler) listByOwner(w http.ResponseWriter, r *http.Request) {
 		}
 		owner = uid
 	}
-	var (
-		lists []models.Watchlist
-		err   error
-	)
-	if uid != "" && owner == uid {
-		lists, err = h.Store.ListWatchlistsByOwner(r.Context(), owner)
-	} else {
-		lists, err = h.Store.ListPublicWatchlistsByOwner(r.Context(), owner)
-	}
+	lists, err := h.Service.ListByOwner(r.Context(), owner, uid)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -180,9 +164,13 @@ func (h *WatchlistHandler) create(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(errs)
 		return
 	}
-	wl := &models.Watchlist{OwnerID: uid, Title: b.Title, Description: b.Description, IsPublic: b.IsPublic}
-	if err := h.Store.CreateWatchlist(r.Context(), wl); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+	wl := &models.Watchlist{Title: b.Title, Description: b.Description, IsPublic: b.IsPublic}
+	if err := h.Service.CreateWatchlist(r.Context(), uid, wl); err != nil {
+		if errors.Is(err, services.ErrUnauthorized) {
+			w.WriteHeader(http.StatusUnauthorized)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
@@ -212,35 +200,34 @@ func (h *WatchlistHandler) update(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(errs)
 		return
 	}
-	// fetch existing to merge
-	existing, err := h.Store.GetWatchlist(r.Context(), id)
+	updated, err := h.Service.UpdateWatchlist(r.Context(), uid, id, func(existing *models.Watchlist) {
+		if b.Title != nil {
+			existing.Title = *b.Title
+		}
+		if b.Description != nil {
+			existing.Description = *b.Description
+		}
+		if b.IsPublic != nil {
+			existing.IsPublic = *b.IsPublic
+		}
+	})
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		switch {
+		case errors.Is(err, services.ErrUnauthorized):
+			w.WriteHeader(http.StatusUnauthorized)
+		case errors.Is(err, services.ErrForbidden):
+			w.WriteHeader(http.StatusForbidden)
+		case errors.Is(err, gorm.ErrRecordNotFound):
 			w.WriteHeader(http.StatusNotFound)
-		} else {
+		default:
 			w.WriteHeader(http.StatusInternalServerError)
+		}
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		}
 		return
 	}
-	if existing.OwnerID != uid {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-	if b.Title != nil {
-		existing.Title = *b.Title
-	}
-	if b.Description != nil {
-		existing.Description = *b.Description
-	}
-	if b.IsPublic != nil {
-		existing.IsPublic = *b.IsPublic
-	}
-	if err := h.Store.UpdateWatchlist(r.Context(), existing); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-	_ = json.NewEncoder(w).Encode(existing)
+	_ = json.NewEncoder(w).Encode(updated)
 }
 
 func (h *WatchlistHandler) delete(w http.ResponseWriter, r *http.Request) {
@@ -250,11 +237,17 @@ func (h *WatchlistHandler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if err := h.Store.DeleteWatchlist(r.Context(), id, uid); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := h.Service.DeleteWatchlist(r.Context(), uid, id); err != nil {
+		switch {
+		case errors.Is(err, services.ErrUnauthorized):
+			w.WriteHeader(http.StatusUnauthorized)
+		case errors.Is(err, gorm.ErrRecordNotFound):
 			w.WriteHeader(http.StatusNotFound)
-		} else {
+		default:
 			w.WriteHeader(http.StatusInternalServerError)
+		}
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		}
 		return
 	}
@@ -282,15 +275,18 @@ func (h *WatchlistHandler) addItem(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(errs)
 		return
 	}
-	mv, err := h.TMDB.GetMovie(r.Context(), b.TMDBID)
+	item, err := h.Service.AddItem(r.Context(), uid, wlID, b.TMDBID, b.Notes)
 	if err != nil {
-		w.WriteHeader(http.StatusBadGateway)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-	item := &models.WatchlistItem{WatchlistID: wlID, TMDBID: b.TMDBID, Title: mv.Title, PosterPath: mv.PosterPath, ReleaseDate: mv.ReleaseDate, Notes: b.Notes}
-	if err := h.Store.AddItem(r.Context(), item, uid); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, services.ErrUnauthorized):
+			w.WriteHeader(http.StatusUnauthorized)
+		case errors.Is(err, services.ErrForbidden):
+			w.WriteHeader(http.StatusForbidden)
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
@@ -306,11 +302,17 @@ func (h *WatchlistHandler) removeItem(w http.ResponseWriter, r *http.Request) {
 	}
 	wlID := chi.URLParam(r, "id")
 	itemID := chi.URLParam(r, "itemId")
-	if err := h.Store.RemoveItem(r.Context(), wlID, itemID, uid); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := h.Service.RemoveItem(r.Context(), uid, wlID, itemID); err != nil {
+		switch {
+		case errors.Is(err, services.ErrUnauthorized):
+			w.WriteHeader(http.StatusUnauthorized)
+		case errors.Is(err, gorm.ErrRecordNotFound):
 			w.WriteHeader(http.StatusNotFound)
-		} else {
+		default:
 			w.WriteHeader(http.StatusInternalServerError)
+		}
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		}
 		return
 	}
@@ -324,8 +326,13 @@ func (h *WatchlistHandler) like(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wlID := chi.URLParam(r, "id")
-	if err := h.Store.Like(r.Context(), uid, wlID); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+	if err := h.Service.Like(r.Context(), uid, wlID); err != nil {
+		switch {
+		case errors.Is(err, services.ErrUnauthorized):
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
@@ -339,8 +346,13 @@ func (h *WatchlistHandler) unlike(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wlID := chi.URLParam(r, "id")
-	if err := h.Store.Unlike(r.Context(), uid, wlID); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+	if err := h.Service.Unlike(r.Context(), uid, wlID); err != nil {
+		switch {
+		case errors.Is(err, services.ErrUnauthorized):
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
@@ -377,44 +389,24 @@ func (h *WatchlistHandler) Feed(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(errs)
 		return
 	}
-	// Build cache key from query
-	key := r.URL.RawQuery
-	if key == "" {
-		key = "_empty"
+	opts := services.FeedOptions{
+		Type:   q.Type,
+		Window: q.Window,
+		Page:   q.Page,
+		Genre:  q.Genre,
+		Year:   q.Year,
+		Region: q.Region,
+		SortBy: q.SortBy,
 	}
-	if b, ok := h.FeedCache.Get(key); ok {
-		w.Header().Set("Cache-Control", "public, max-age=60")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(b)
-		return
-	}
-
-	if q.Type == "trending" {
-		res, err := h.TMDB.TrendingMovies(r.Context(), q.Window, q.Page, q.Region)
-		if err != nil {
-			w.WriteHeader(http.StatusBadGateway)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
-		b, _ := json.Marshal(res)
-		h.FeedCache.Set(key, b)
-		w.Header().Set("Cache-Control", "public, max-age=60")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(b)
-		return
-	}
-	// discover
-	res, err := h.TMDB.DiscoverMovies(r.Context(), q.Page, q.Genre, q.Year, q.Region, q.SortBy)
+	body, _, err := h.Service.FetchFeed(r.Context(), opts)
 	if err != nil {
 		w.WriteHeader(http.StatusBadGateway)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
-	b, _ := json.Marshal(res)
-	h.FeedCache.Set(key, b)
 	w.Header().Set("Cache-Control", "public, max-age=60")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(b)
+	_, _ = w.Write(body)
 }
 
 // Mount returns a function that adds the routes under the given router

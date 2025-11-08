@@ -1,0 +1,83 @@
+package domain
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/yourname/moodle/internal/models"
+)
+
+// User represents a user in the domain layer
+type User struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Bio       string
+	Email     string
+	Username  string
+	Password  string
+	AvatarUrl string
+}
+
+// FromModel converts models.User to domain.User
+func (u *User) FromModel(model *models.User) *User {
+	if model == nil {
+		return nil
+	}
+	return &User{
+		ID:        model.ID,
+		CreatedAt: model.CreatedAt,
+		UpdatedAt: model.UpdatedAt,
+		Bio:       model.Bio,
+		Email:     model.Email,
+		Username:  model.Username,
+		Password:  model.Password,
+		AvatarUrl: model.AvatarUrl,
+	}
+}
+
+// ToModel converts domain.User to models.User
+func (u *User) ToModel() *models.User {
+	if u == nil {
+		return nil
+	}
+	return &models.User{
+		ID:        u.ID,
+		CreatedAt: u.CreatedAt,
+		UpdatedAt: u.UpdatedAt,
+		Bio:       u.Bio,
+		Email:     u.Email,
+		Username:  u.Username,
+		Password:  u.Password,
+		AvatarUrl: u.AvatarUrl,
+	}
+}
+
+// UserFromModel is a helper function to convert models.User to domain.User
+func UserFromModel(model *models.User) *User {
+	if model == nil {
+		return nil
+	}
+	return &User{
+		ID:        model.ID,
+		CreatedAt: model.CreatedAt,
+		UpdatedAt: model.UpdatedAt,
+		Bio:       model.Bio,
+		Email:     model.Email,
+		Username:  model.Username,
+		Password:  model.Password,
+		AvatarUrl: model.AvatarUrl,
+	}
+}
+
+// UsersFromModel converts a slice of models.User to domain.User
+func UsersFromModel(modelUsers []models.User) []User {
+	if modelUsers == nil {
+		return nil
+	}
+	users := make([]User, 0, len(modelUsers))
+	for _, m := range modelUsers {
+		users = append(users, *UserFromModel(&m))
+	}
+	return users
+}

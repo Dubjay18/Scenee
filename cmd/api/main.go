@@ -18,24 +18,20 @@ import (
 	"github.com/yourname/moodle/internal/auth"
 	"github.com/yourname/moodle/internal/handlers"
 	httpserver "github.com/yourname/moodle/internal/http"
-	"github.com/yourname/moodle/internal/store"
+	"github.com/yourname/moodle/internal/repositories"
+	"github.com/yourname/moodle/internal/services"
 	"github.com/yourname/moodle/internal/tmdb"
 )
 
 type Config struct {
-	Port                 string `envconfig:"PORT" default:"8080"`
-	DatabaseURL          string `envconfig:"DATABASE_URL" required:"true"`
-	SupabaseURL          string `envconfig:"SUPABASE_URL" required:"true"`
-	SupabaseAnonKey      string `envconfig:"SUPABASE_ANON_KEY" required:"true"`
-	SupabaseJWTPublicKey string `envconfig:"SUPABASE_JWT_PUBLIC_KEY"`
-	SupabaseJWKSURL      string `envconfig:"SUPABASE_JWKS_URL"`
-	SupabaseJWTAudience  string `envconfig:"SUPABASE_JWT_AUDIENCE" default:"authenticated"`
-	SupabaseJWTIssuer    string `envconfig:"SUPABASE_JWT_ISSUER" required:"true"`
-	ClientURL            string `envconfig:"CLIENT_URL" default:"exp://192.168.0.5:8081/--/auth"`
-	TMDBAPIKey           string `envconfig:"TMDB_API_KEY" required:"true"`
-	TMDBBaseURL          string `envconfig:"TMDB_BASE_URL" default:"https://api.themoviedb.org/3"`
-	GeminiAPIKey         string `envconfig:"GEMINI_API_KEY" required:"true"`
-	GeminiModel          string `envconfig:"GEMINI_MODEL" default:"gemini-1.5-flash"`
+	Port         string `envconfig:"PORT" default:"8080"`
+	DatabaseURL  string `envconfig:"DATABASE_URL" required:"true"`
+	JWTSecret    string `envconfig:"JWT_SECRET" required:"true"`
+	ClientURL    string `envconfig:"CLIENT_URL" default:"exp://192.168.0.5:8081/--/auth"`
+	TMDBAPIKey   string `envconfig:"TMDB_API_KEY" required:"true"`
+	TMDBBaseURL  string `envconfig:"TMDB_BASE_URL" default:"https://api.themoviedb.org/3"`
+	GeminiAPIKey string `envconfig:"GEMINI_API_KEY" required:"true"`
+	GeminiModel  string `envconfig:"GEMINI_MODEL" default:"gemini-1.5-flash"`
 }
 
 func mustLoadEnv() Config {
@@ -64,18 +60,27 @@ func mustDB(dsn string) *gorm.DB {
 func main() {
 	cfg := mustLoadEnv()
 	db := mustDB(cfg.DatabaseURL)
-	st := store.New(db)
 	tmdbClient := tmdb.New(cfg.TMDBAPIKey, cfg.TMDBBaseURL)
 	aiClient := ai.NewGemini(cfg.GeminiAPIKey, cfg.GeminiModel)
 
+	// Repositories
+	userRepo := repositories.NewUserRepository(db)
+	watchlistRepo := repositories.NewWatchlistRepository(db)
+
+	// Services
+	userService := services.NewUserService(userRepo)
+	watchlistService := services.NewWatchlistService(watchlistRepo, tmdbClient)
+	aiService := services.NewAIService(aiClient)
+	authService := services.NewAuthService(userService, cfg.JWTSecret)
+
 	// Handlers
-	wlHandler := handlers.NewWatchlistHandler(st, tmdbClient)
-	aiHandler := handlers.NewAIHandler(aiClient)
-	userHandler := handlers.NewUserHandler(st)
-	authHandler := handlers.NewAuthHandler(st, cfg.SupabaseURL, cfg.SupabaseAnonKey, cfg.ClientURL)
+	wlHandler := handlers.NewWatchlistHandler(watchlistService)
+	aiHandler := handlers.NewAIHandler(aiService)
+	userHandler := handlers.NewUserHandler(userService)
+	authHandler := handlers.NewAuthHandler(authService)
 
 	// Auth middleware
-	verifier := &auth.SupabaseVerifier{PublicKeyPEMOrJWKS: cfg.SupabaseJWTPublicKey, JWKSURL: cfg.SupabaseJWKSURL, Audience: cfg.SupabaseJWTAudience, Issuer: cfg.SupabaseJWTIssuer}
+	verifier := auth.NewJWTVerifier(cfg.JWTSecret)
 
 	mounter := func(r chi.Router) {
 		// Public routes

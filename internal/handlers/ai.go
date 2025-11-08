@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/yourname/moodle/internal/ai"
+	"github.com/yourname/moodle/internal/services"
 	"github.com/yourname/moodle/internal/validate"
 )
 
-type AIHandler struct{ AI *ai.GeminiClient }
+type AIHandler struct{ Service *services.AIService }
 
-func NewAIHandler(c *ai.GeminiClient) *AIHandler { return &AIHandler{AI: c} }
+func NewAIHandler(s *services.AIService) *AIHandler { return &AIHandler{Service: s} }
 
 func (h *AIHandler) Ask(w http.ResponseWriter, r *http.Request) {
 	type req struct {
@@ -27,7 +27,7 @@ func (h *AIHandler) Ask(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(errs)
 		return
 	}
-	answer, err := h.AI.Ask(r.Context(), body.Query)
+	answer, err := h.Service.Ask(r.Context(), body.Query)
 	if err != nil {
 		w.WriteHeader(http.StatusBadGateway)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
