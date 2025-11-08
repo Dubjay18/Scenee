@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/yourname/moodle/internal/models"
+	"github.com/Dubjay18/scenee/internal/models"
 	"gorm.io/datatypes"
 )
 
@@ -15,6 +15,7 @@ type Movie struct {
 	TMDBID      int
 	Title       string
 	Year        int
+	ReleaseDate *time.Time
 	PosterURL   string
 	BackdropURL string
 	Genres      []string
@@ -22,6 +23,13 @@ type Movie struct {
 	Metadata    map[string]interface{}
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type SearchResult struct {
+	Movies     []Movie
+	TotalCount int
+	TotalPages int
+	Page       int
 }
 
 // FromModel converts models.Movie to domain.Movie
@@ -47,6 +55,7 @@ func (m *Movie) FromModel(model *models.Movie) *Movie {
 		TMDBID:      model.TMDBID,
 		Title:       model.Title,
 		Year:        model.Year,
+		ReleaseDate: model.ReleaseDate,
 		PosterURL:   model.PosterURL,
 		BackdropURL: model.BackdropURL,
 		Genres:      genres,
@@ -82,6 +91,7 @@ func (m *Movie) ToModel() *models.Movie {
 		TMDBID:      m.TMDBID,
 		Title:       m.Title,
 		Year:        m.Year,
+		ReleaseDate: m.ReleaseDate,
 		PosterURL:   m.PosterURL,
 		BackdropURL: m.BackdropURL,
 		Genres:      genresJSON,

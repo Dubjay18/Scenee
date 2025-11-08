@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/yourname/moodle/internal/services"
-	"github.com/yourname/moodle/internal/validate"
+	"github.com/Dubjay18/scenee/internal/services"
+	"github.com/Dubjay18/scenee/internal/validate"
 )
 
 type AIHandler struct{ Service *services.AIService }

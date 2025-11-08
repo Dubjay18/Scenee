@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/yourname/moodle/internal/models"
+	"github.com/Dubjay18/scenee/internal/models"
 )
 
 // RefreshToken represents a refresh token in the domain layer

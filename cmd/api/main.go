@@ -14,13 +14,13 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/yourname/moodle/internal/ai"
-	"github.com/yourname/moodle/internal/auth"
-	"github.com/yourname/moodle/internal/handlers"
-	httpserver "github.com/yourname/moodle/internal/http"
-	"github.com/yourname/moodle/internal/repositories"
-	"github.com/yourname/moodle/internal/services"
-	"github.com/yourname/moodle/internal/tmdb"
+	"github.com/Dubjay18/scenee/internal/ai"
+	"github.com/Dubjay18/scenee/internal/auth"
+	"github.com/Dubjay18/scenee/internal/handlers"
+	httpserver "github.com/Dubjay18/scenee/internal/http"
+	"github.com/Dubjay18/scenee/internal/repositories"
+	"github.com/Dubjay18/scenee/internal/services"
+	"github.com/Dubjay18/scenee/internal/tmdb"
 )
 
 type Config struct {

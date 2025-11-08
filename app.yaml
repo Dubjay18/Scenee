@@ -1,9 +1,9 @@
-name: moodle-api
+name: scenee-api
 services:
 - name: api
   source_dir: /
   github:
-    repo: Dubjay18/moodle
+    repo: Dubjay18/scenee
     branch: main
   run_command: ./main
   environment_slug: go
@@ -51,7 +51,7 @@ jobs:
 - name: migrate
   source_dir: /
   github:
-    repo: Dubjay18/moodle
+    repo: Dubjay18/scenee
     branch: main
   run_command: |
     goose -dir ./migrations postgres "$DATABASE_URL" up

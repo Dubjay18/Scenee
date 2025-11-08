@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yourname/moodle/internal/cache"
-	"github.com/yourname/moodle/internal/models"
-	"github.com/yourname/moodle/internal/repositories"
-	"github.com/yourname/moodle/internal/tmdb"
+	"github.com/google/uuid"
+	"github.com/Dubjay18/scenee/internal/cache"
+	"github.com/Dubjay18/scenee/internal/domain"
+	"github.com/Dubjay18/scenee/internal/models"
+	"github.com/Dubjay18/scenee/internal/repositories"
+	"github.com/Dubjay18/scenee/internal/tmdb"
 )
 
 var (
@@ -20,24 +22,38 @@ var (
 
 type WatchlistService struct {
 	watchlists repositories.WatchlistRepository
-	tmdb       *tmdb.Client
+	msvc       *MovieService
 	feedCache  *cache.TTLCache[string, []byte]
 }
 
 func NewWatchlistService(repo repositories.WatchlistRepository, tmdbClient *tmdb.Client) *WatchlistService {
 	return &WatchlistService{
 		watchlists: repo,
-		tmdb:       tmdbClient,
+		msvc:       NewMovieService(*tmdbClient, nil),
 		feedCache:  cache.NewTTL[string, []byte](60 * time.Second),
 	}
 }
 
-func (s *WatchlistService) SearchMovies(ctx context.Context, query string, page int) (*tmdb.SearchMoviesResponse, error) {
-	return s.tmdb.SearchMovies(ctx, query, page)
+func (s *WatchlistService) SaveWatchlist(ctx context.Context, userID, watchlistID string) error {
+	if userID == "" {
+		return ErrUnauthorized
+	}
+	watchlist, err := s.watchlists.GetByID(ctx, watchlistID)
+	if err != nil {
+		return err
+	}
+	if watchlist.OwnerID == userID {
+		return errors.New("cannot save your own watchlist")
+	}
+	return s.watchlists.Save(ctx, userID, watchlistID)
 }
 
-func (s *WatchlistService) GetMovie(ctx context.Context, id int64) (*tmdb.Movie, error) {
-	return s.tmdb.GetMovie(ctx, id)
+func (s *WatchlistService) SearchMovies(ctx context.Context, query string, page int) (*domain.SearchResult, error) {
+	return s.msvc.SearchMovies(ctx, query, page)
+}
+
+func (s *WatchlistService) GetMovie(ctx context.Context, id int) (*domain.Movie, error) {
+	return s.msvc.GetMovieByTMDBID(ctx, id)
 }
 
 func (s *WatchlistService) TrendingWatchlists(ctx context.Context, window string, limit int) ([]models.Watchlist, error) {
@@ -49,7 +65,7 @@ func (s *WatchlistService) GetWatchlist(ctx context.Context, id, requester strin
 	if err != nil {
 		return nil, err
 	}
-	if !wl.IsPublic && wl.OwnerID != requester {
+	if wl.Visibility == models.PrivateVisibility && wl.OwnerID != requester {
 		return nil, ErrForbidden
 	}
 	return wl, nil
@@ -97,21 +113,21 @@ func (s *WatchlistService) DeleteWatchlist(ctx context.Context, owner, id string
 	return s.watchlists.Delete(ctx, id, owner)
 }
 
-func (s *WatchlistService) AddItem(ctx context.Context, owner, watchlistID string, tmdbID int64, notes string) (*models.WatchlistItem, error) {
+func (s *WatchlistService) AddItem(ctx context.Context, owner, watchlistID string, tmdbID int, notes string) (*models.WatchlistItem, error) {
 	if owner == "" {
 		return nil, ErrUnauthorized
 	}
-	movie, err := s.tmdb.GetMovie(ctx, tmdbID)
+	movie, err := s.msvc.GetMovieByTMDBID(ctx, tmdbID)
 	if err != nil {
 		return nil, err
 	}
 	item := &models.WatchlistItem{
-		WatchlistID: watchlistID,
-		TMDBID:      tmdbID,
-		Title:       movie.Title,
-		PosterPath:  movie.PosterPath,
-		ReleaseDate: movie.ReleaseDate,
-		Notes:       notes,
+		WatchlistID: uuid.MustParse(watchlistID),
+		MovieID:     movie.ID,
+		Note:        notes,
+		ID:          uuid.New(),
+		Position:    0, // Will be set in repository
+		AddedAt:     time.Now(),
 	}
 	if err := s.watchlists.AddItem(ctx, item, owner); err != nil {
 		return nil, err
@@ -168,7 +184,7 @@ func (s *WatchlistService) FetchFeed(ctx context.Context, opts FeedOptions) ([]b
 	switch opts.Type {
 	case "trending":
 		var res *tmdb.TrendingResponse
-		res, err = s.tmdb.TrendingMovies(ctx, opts.Window, opts.Page, opts.Region)
+		res, err = s.msvc.tmdbClient.TrendingMovies(ctx, opts.Window, opts.Page, opts.Region)
 		if err != nil {
 			return nil, false, err
 		}
@@ -178,7 +194,7 @@ func (s *WatchlistService) FetchFeed(ctx context.Context, opts FeedOptions) ([]b
 		}
 	default:
 		var res *tmdb.DiscoverResponse
-		res, err = s.tmdb.DiscoverMovies(ctx, opts.Page, opts.Genre, opts.Year, opts.Region, opts.SortBy)
+		res, err = s.msvc.tmdbClient.DiscoverMovies(ctx, opts.Page, opts.Genre, opts.Year, opts.Region, opts.SortBy)
 		if err != nil {
 			return nil, false, err
 		}

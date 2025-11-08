@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/yourname/moodle/internal/models"
+	"github.com/Dubjay18/scenee/internal/models"
 )
 
 // Watchlist represents a watchlist in the domain layer
@@ -21,6 +21,7 @@ type Watchlist struct {
 	LikeCount   int
 	SaveCount   int
 	ItemCount   int
+	SavedBy     []string
 }
 
 // FromModel converts models.Watchlist to domain.Watchlist
@@ -32,6 +33,12 @@ func (w *Watchlist) FromModel(model *models.Watchlist) *Watchlist {
 	var owner *User
 	if model.Owner.ID != uuid.Nil {
 		owner = UserFromModel(&model.Owner)
+	}
+
+	// Map SavedBy user IDs
+	savedBy := make([]string, 0, len(model.SavedBy))
+	for _, id := range model.SavedBy {
+		savedBy = append(savedBy, id)
 	}
 
 	return &Watchlist{
@@ -47,6 +54,7 @@ func (w *Watchlist) FromModel(model *models.Watchlist) *Watchlist {
 		LikeCount:   model.LikeCount,
 		SaveCount:   model.SaveCount,
 		ItemCount:   model.ItemCount,
+		SavedBy:     savedBy,
 	}
 }
 
@@ -68,6 +76,7 @@ func (w *Watchlist) ToModel() *models.Watchlist {
 		LikeCount:   w.LikeCount,
 		SaveCount:   w.SaveCount,
 		ItemCount:   w.ItemCount,
+		SavedBy:     w.SavedBy,
 	}
 
 	if w.Owner != nil {

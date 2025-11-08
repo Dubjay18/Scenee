@@ -3,8 +3,8 @@ package services
 import (
 	"context"
 
-	"github.com/yourname/moodle/internal/models"
-	"github.com/yourname/moodle/internal/repositories"
+	"github.com/Dubjay18/scenee/internal/models"
+	"github.com/Dubjay18/scenee/internal/repositories"
 )
 
 type UserService struct {

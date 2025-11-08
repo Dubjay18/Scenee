@@ -8,7 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type ctxKeyUserID struct{}
+var ctxKeyUserID string = "user_id"
 
 type JWTVerifier struct {
 	Secret string
@@ -50,7 +50,7 @@ func (v *JWTVerifier) Middleware(next http.Handler) http.Handler {
 		}
 		if claims, ok := parsed.Claims.(jwt.MapClaims); ok {
 			if sub, ok := claims["sub"].(string); ok && sub != "" {
-				r = r.WithContext(context.WithValue(r.Context(), ctxKeyUserID{}, sub))
+				r = r.WithContext(context.WithValue(r.Context(), ctxKeyUserID, sub))
 			}
 		}
 		next.ServeHTTP(w, r)
@@ -58,7 +58,7 @@ func (v *JWTVerifier) Middleware(next http.Handler) http.Handler {
 }
 
 func UserID(ctx context.Context) string {
-	if v, ok := ctx.Value(ctxKeyUserID{}).(string); ok {
+	if v, ok := ctx.Value(ctxKeyUserID).(string); ok {
 		return v
 	}
 	return ""

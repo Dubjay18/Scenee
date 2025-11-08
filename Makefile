@@ -1,7 +1,7 @@
 # Use fish-compatible commands
 
-APP_NAME=moodle
-PKG=github.com/Dubjay18/moodle
+APP_NAME=scenee
+PKG=github.com/Dubjay18/scenee
 DB_DSN?=$(DATABASE_URL)
 MIGRATIONS_DIR=./migrations
 MIGRATIONS_TABLE?=goose_db_version
@@ -21,15 +21,20 @@ tidy:
 	go mod tidy
 
 # Helper to compute DSN for goose: append flags to avoid pgx stmtcache issues
+# Prioritizes MIGRATION_URL over DATABASE_URL for direct DB connections (bypassing poolers like PgBouncer)
 define RESOLVE_DSN
-DB_DSN="$${DB_DSN:-$${DATABASE_URL}}"; \
+DB_DSN="$${MIGRATION_URL:-$${DB_DSN:-$${DATABASE_URL}}}"; \
 if [ -z "$$DB_DSN" ] && [ -f .env ]; then \
-	DB_DSN="$$(grep -E '^DATABASE_URL=' .env | head -n1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$$//')"; \
+	DB_DSN="$$(grep -E '^MIGRATION_URL=' .env | head -n1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$$//')"; \
+	if [ -z "$$DB_DSN" ]; then \
+		DB_DSN="$$(grep -E '^DATABASE_URL=' .env | head -n1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$$//')"; \
+	fi; \
 fi; \
-if [ -z "$$DB_DSN" ]; then echo "DB_DSN/DATABASE_URL not set. Put it in .env or pass DB_DSN=postgres://user:pass@host:5432/dbname?sslmode=require" >&2; exit 2; fi; \
-case "$$DB_DSN" in \
-*\?*) DSN_FOR_GOOSE="$$DB_DSN&prefer_simple_protocol=true&statement_cache_mode=none" ;; \
-*) DSN_FOR_GOOSE="$$DB_DSN?prefer_simple_protocol=true&statement_cache_mode=none" ;; \
+if [ -z "$$DB_DSN" ]; then echo "DB_DSN/MIGRATION_URL/DATABASE_URL not set. Put MIGRATION_URL in .env (direct connection, not pooler) or pass DB_DSN=postgres://user:pass@host:5432/dbname" >&2; exit 2; fi; \
+DSN_FOR_GOOSE="$$(echo "$$DB_DSN" | sed -e 's/[&?]pgbouncer=true//g')"; \
+case "$$DSN_FOR_GOOSE" in \
+*\?*) DSN_FOR_GOOSE="$$DSN_FOR_GOOSE&prefer_simple_protocol=true&statement_cache_mode=none" ;; \
+*) DSN_FOR_GOOSE="$$DSN_FOR_GOOSE?prefer_simple_protocol=true&statement_cache_mode=none" ;; \
 esac; \
 command -v goose >/dev/null 2>&1 || go install github.com/pressly/goose/v3/cmd/goose@latest;
 endef

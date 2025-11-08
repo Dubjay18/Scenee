@@ -9,10 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 
-	"github.com/yourname/moodle/internal/auth"
-	"github.com/yourname/moodle/internal/models"
-	"github.com/yourname/moodle/internal/services"
-	"github.com/yourname/moodle/internal/validate"
+	"github.com/Dubjay18/scenee/internal/auth"
+	"github.com/Dubjay18/scenee/internal/models"
+	"github.com/Dubjay18/scenee/internal/services"
+	"github.com/Dubjay18/scenee/internal/validate"
 )
 
 type WatchlistHandler struct{ Service *services.WatchlistService }
@@ -34,6 +34,28 @@ func (h *WatchlistHandler) Routes(r chi.Router) {
 	// likes
 	r.Post("/{id}/like", h.like)
 	r.Delete("/{id}/like", h.unlike)
+	// save
+	r.Post("/{id}/save", h.save)
+}
+
+func (h *WatchlistHandler) save(w http.ResponseWriter, r *http.Request) {
+	uid := auth.UserID(r.Context())
+	if uid == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	wlID := chi.URLParam(r, "id")
+	if err := h.Service.SaveWatchlist(r.Context(), uid, wlID); err != nil {
+		switch {
+		case errors.Is(err, services.ErrUnauthorized):
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Public: /v1/search/movies
@@ -70,7 +92,7 @@ func (h *WatchlistHandler) Movie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mv, err := h.Service.GetMovie(r.Context(), id)
+	mv, err := h.Service.GetMovie(r.Context(), int(id))
 	if err != nil {
 		w.WriteHeader(http.StatusBadGateway)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -164,7 +186,7 @@ func (h *WatchlistHandler) create(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(errs)
 		return
 	}
-	wl := &models.Watchlist{Title: b.Title, Description: b.Description, IsPublic: b.IsPublic}
+	wl := &models.Watchlist{Title: b.Title, Description: b.Description, Visibility: models.PublicVisibility}
 	if err := h.Service.CreateWatchlist(r.Context(), uid, wl); err != nil {
 		if errors.Is(err, services.ErrUnauthorized) {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -188,7 +210,7 @@ func (h *WatchlistHandler) update(w http.ResponseWriter, r *http.Request) {
 	type bodyT struct {
 		Title       *string `validate:"omitempty,min=1,max=200"`
 		Description *string `validate:"omitempty,max=1000"`
-		IsPublic    *bool
+		Visibility  *string `validate:"omitempty,oneof=public private unlisted"`
 	}
 	var b bodyT
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
@@ -207,8 +229,8 @@ func (h *WatchlistHandler) update(w http.ResponseWriter, r *http.Request) {
 		if b.Description != nil {
 			existing.Description = *b.Description
 		}
-		if b.IsPublic != nil {
-			existing.IsPublic = *b.IsPublic
+		if b.Visibility != nil {
+			existing.Visibility = *b.Visibility
 		}
 	})
 	if err != nil {
@@ -222,7 +244,7 @@ func (h *WatchlistHandler) update(w http.ResponseWriter, r *http.Request) {
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
-		if err != nil {
+		if err!= nil {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		}
 		return
@@ -246,7 +268,7 @@ func (h *WatchlistHandler) delete(w http.ResponseWriter, r *http.Request) {
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
-		if err != nil {
+		if err!= nil {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		}
 		return
@@ -275,7 +297,7 @@ func (h *WatchlistHandler) addItem(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(errs)
 		return
 	}
-	item, err := h.Service.AddItem(r.Context(), uid, wlID, b.TMDBID, b.Notes)
+	item, err := h.Service.AddItem(r.Context(), uid, wlID, int(b.TMDBID), b.Notes)
 	if err != nil {
 		switch {
 		case errors.Is(err, services.ErrUnauthorized):

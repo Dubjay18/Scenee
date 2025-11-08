@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 
-	"github.com/yourname/moodle/internal/ai"
+	"github.com/Dubjay18/scenee/internal/ai"
 )
 
 type AIService struct {

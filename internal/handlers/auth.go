@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/yourname/moodle/internal/auth"
-	"github.com/yourname/moodle/internal/services"
-	"github.com/yourname/moodle/internal/validate"
+	"github.com/Dubjay18/scenee/internal/auth"
+	"github.com/Dubjay18/scenee/internal/services"
+	"github.com/Dubjay18/scenee/internal/validate"
 )
 
 type AuthHandler struct {

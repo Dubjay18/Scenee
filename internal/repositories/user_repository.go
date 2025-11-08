@@ -6,7 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/yourname/moodle/internal/models"
+	"github.com/Dubjay18/scenee/internal/models"
 )
 
 type UserRepository interface {
@@ -24,7 +24,7 @@ func NewUserRepository(db *gorm.DB) *GormUserRepository {
 }
 
 func (r *GormUserRepository) Upsert(ctx context.Context, user *models.User) error {
-	if user.ID == "" && user.Email == "" && user.Username == "" {
+	if user.ID.String() == "" && user.Email == "" && user.Username == "" {
 		return errors.New("missing identifiers")
 	}
 	return r.db.WithContext(ctx).Where(models.User{Email: user.Email}).Assign(user).FirstOrCreate(user).Error

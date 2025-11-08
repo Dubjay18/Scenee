@@ -65,7 +65,7 @@
 ### Update Configuration
 
 Edit `app.yaml` and replace:
-- `Dubjay18/moodle` with your GitHub username/repo
+- `Dubjay18/scenee` with your GitHub username/repo
 - `your-project.supabase.co` with your Supabase project URL
 - `your-tmdb-key` with your TMDb API key
 - `your-gemini-key` with your Gemini API key

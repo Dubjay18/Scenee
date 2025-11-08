@@ -17,6 +17,7 @@ type Movie struct {
 	BackdropURL string         `gorm:"type:text"`
 	Genres      datatypes.JSON `gorm:"type:jsonb"` // store []string
 	Runtime     *int
+	ReleaseDate *time.Time
 	Metadata    datatypes.JSON `gorm:"type:jsonb"`
 	CreatedAt   time.Time      `gorm:"not null;default:now()"`
 	UpdatedAt   time.Time      `gorm:"not null;default:now()"`

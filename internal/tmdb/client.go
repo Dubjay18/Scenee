@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/Dubjay18/scenee/internal/domain"
 )
 
 type Client struct {
@@ -16,14 +20,20 @@ type Client struct {
 }
 
 type Movie struct {
-	ID           int64  `json:"id"`
-	Title        string `json:"title"`
-	Overview     string `json:"overview"`
-	PosterPath   string `json:"poster_path"`
-	BackdropPath string `json:"backdrop_path"`
-	ReleaseDate  string `json:"release_date"`
+	ID           int64   `json:"id"`
+	Title        string  `json:"title"`
+	Overview     string  `json:"overview"`
+	PosterPath   string  `json:"poster_path"`
+	BackdropPath string  `json:"backdrop_path"`
+	ReleaseDate  string  `json:"release_date"`
+	Genres       []Genre `json:"genres"`
+	Runtime      int     `json:"runtime"`
 }
 
+type Genre struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
 type SearchMoviesResponse struct {
 	Page         int     `json:"page"`
 	TotalPages   int     `json:"total_pages"`
@@ -161,4 +171,51 @@ func (c *Client) DiscoverMovies(ctx context.Context, page int, genre, year, regi
 		return nil, err
 	}
 	return &out, nil
+}
+
+func (c *Client) ToDomainMovie(tm *Movie) *domain.Movie {
+	if tm == nil {
+		return nil
+	}
+
+	year := 0
+	var releaseDate *time.Time
+	if tm.ReleaseDate != "" {
+		if t, err := time.Parse("2006-01-02", tm.ReleaseDate); err == nil {
+			year = t.Year()
+			releaseDate = &t
+		} else if len(tm.ReleaseDate) >= 4 {
+			if y, err := strconv.Atoi(tm.ReleaseDate[:4]); err == nil {
+				year = y
+			}
+		}
+	}
+
+	return &domain.Movie{
+		ID:          uuid.New(),
+		TMDBID:      int(tm.ID),
+		Title:       tm.Title,
+		Year:        year,
+		ReleaseDate: releaseDate,
+		PosterURL:   tm.PosterPath,
+		BackdropURL: tm.BackdropPath,
+		Genres:      convertGenres(tm.Genres),
+		Runtime:     &tm.Runtime,
+		Metadata: map[string]interface{}{
+			"overview": tm.Overview,
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+}
+
+func convertGenres(gs []Genre) []string {
+	if len(gs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(gs))
+	for _, g := range gs {
+		out = append(out, g.Name)
+	}
+	return out
 }

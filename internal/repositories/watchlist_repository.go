@@ -6,13 +6,16 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"github.com/yourname/moodle/internal/models"
+	"github.com/google/uuid"
+	"github.com/Dubjay18/scenee/internal/models"
 )
 
 type WatchlistRepository interface {
 	Create(ctx context.Context, watchlist *models.Watchlist) error
 	Update(ctx context.Context, watchlist *models.Watchlist) error
 	Delete(ctx context.Context, id, owner string) error
+	Save(ctx context.Context, userID, watchlistID string) error
+	Unsave(ctx context.Context, userID, watchlistID string) error
 	GetByID(ctx context.Context, id string) (*models.Watchlist, error)
 	ListByOwner(ctx context.Context, owner string) ([]models.Watchlist, error)
 	ListPublicByOwner(ctx context.Context, owner string) ([]models.Watchlist, error)
@@ -32,6 +35,61 @@ func NewWatchlistRepository(db *gorm.DB) *GormWatchlistRepository {
 	return &GormWatchlistRepository{db: db}
 }
 
+func (r *GormWatchlistRepository) Save(ctx context.Context, userID, watchlistID string) error {
+	// First, check if the user has already saved this watchlist
+	var watchlist models.Watchlist
+	if err := r.db.WithContext(ctx).Where("id = ?", watchlistID).First(&watchlist).Error; err != nil {
+		return err
+	}
+
+	// Check if userID is already in SavedBy
+	for _, id := range watchlist.SavedBy {
+		if id == userID {
+			// Already saved, return without error
+			return nil
+		}
+	}
+
+	// Add userID to SavedBy array and increment SaveCount
+	return r.db.WithContext(ctx).Model(&models.Watchlist{}).
+		Where("id = ?", watchlistID).
+		Updates(map[string]interface{}{
+			"saved_by":   gorm.Expr("saved_by || ?::jsonb", `"`+userID+`"`),
+			"save_count": gorm.Expr("save_count + 1"),
+		}).Error
+}
+
+func (r *GormWatchlistRepository) Unsave(ctx context.Context, userID, watchlistID string) error {
+	// First, check if the watchlist exists and user has saved it
+	var watchlist models.Watchlist
+	if err := r.db.WithContext(ctx).Where("id = ?", watchlistID).First(&watchlist).Error; err != nil {
+		return err
+	}
+
+	// Check if userID is in SavedBy
+	found := false
+	for _, id := range watchlist.SavedBy {
+		if id == userID {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		// Not saved, return without error
+		return nil
+	}
+
+	// Remove userID from SavedBy array and decrement SaveCount
+	// Using jsonb_set to remove the element
+	return r.db.WithContext(ctx).Model(&models.Watchlist{}).
+		Where("id = ?", watchlistID).
+		Updates(map[string]interface{}{
+			"saved_by":   gorm.Expr("(SELECT jsonb_agg(elem) FROM jsonb_array_elements(saved_by) elem WHERE elem::text != ?)", `"`+userID+`"`),
+			"save_count": gorm.Expr("GREATEST(save_count - 1, 0)"),
+		}).Error
+}
+
 func (r *GormWatchlistRepository) Create(ctx context.Context, watchlist *models.Watchlist) error {
 	return r.db.WithContext(ctx).Create(watchlist).Error
 }
@@ -40,7 +98,6 @@ func (r *GormWatchlistRepository) Update(ctx context.Context, watchlist *models.
 	return r.db.WithContext(ctx).Model(&models.Watchlist{}).Where("id = ? AND owner_id = ?", watchlist.ID, watchlist.OwnerID).Updates(map[string]any{
 		"title":       watchlist.Title,
 		"description": watchlist.Description,
-		"is_public":   watchlist.IsPublic,
 	}).Error
 }
 
@@ -84,7 +141,7 @@ func (r *GormWatchlistRepository) EnsureOwner(ctx context.Context, watchlistID, 
 }
 
 func (r *GormWatchlistRepository) AddItem(ctx context.Context, item *models.WatchlistItem, owner string) error {
-	if err := r.EnsureOwner(ctx, item.WatchlistID, owner); err != nil {
+	if err := r.EnsureOwner(ctx, item.WatchlistID.String(), owner); err != nil {
 		return err
 	}
 	var pos int
@@ -103,11 +160,11 @@ func (r *GormWatchlistRepository) RemoveItem(ctx context.Context, watchlistID, i
 }
 
 func (r *GormWatchlistRepository) Like(ctx context.Context, userID, watchlistID string) error {
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}, {Name: "watchlist_id"}}, DoNothing: true}).Create(&models.Like{UserID: userID, WatchlistID: watchlistID}).Error
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}, {Name: "watchlist_id"}}, DoNothing: true}).Create(&models.Like{UserID: uuid.MustParse(userID), WatchlistID: uuid.MustParse(watchlistID)}).Error
 }
 
 func (r *GormWatchlistRepository) Unlike(ctx context.Context, userID, watchlistID string) error {
-	return r.db.WithContext(ctx).Where("user_id = ? AND watchlist_id = ?", userID, watchlistID).Delete(&models.Like{}).Error
+	return r.db.WithContext(ctx).Where("user_id = ? AND watchlist_id = ?", uuid.MustParse(userID), uuid.MustParse(watchlistID)).Delete(&models.Like{}).Error
 }
 
 func (r *GormWatchlistRepository) Top(ctx context.Context, window string, limit int) ([]models.Watchlist, error) {

@@ -8,7 +8,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/yourname/moodle/internal/models"
+	"github.com/Dubjay18/scenee/internal/domain"
+	"github.com/Dubjay18/scenee/internal/models"
 )
 
 var (
@@ -17,20 +18,20 @@ var (
 )
 
 type AuthService struct {
-	users     *UserService
+	usvc      *UserService
 	jwtSecret string
 }
 
-func NewAuthService(users *UserService, jwtSecret string) *AuthService {
+func NewAuthService(usvc *UserService, jwtSecret string) *AuthService {
 	return &AuthService{
-		users:     users,
+		usvc:      usvc,
 		jwtSecret: jwtSecret,
 	}
 }
 
-func (s *AuthService) Register(ctx context.Context, email, username, password string) (*models.User, error) {
+func (s *AuthService) Register(ctx context.Context, email, username, password string) (*domain.User, error) {
 	// Check if user exists
-	if _, err := s.users.GetByEmail(ctx, email); err == nil {
+	if _, err := s.usvc.GetByEmail(ctx, email); err == nil {
 		return nil, ErrUserExists
 	}
 
@@ -46,15 +47,15 @@ func (s *AuthService) Register(ctx context.Context, email, username, password st
 		Password: string(hashed),
 	}
 
-	if err := s.users.Upsert(ctx, user); err != nil {
+	if err := s.usvc.Upsert(ctx, user); err != nil {
 		return nil, err
 	}
 
-	return user, nil
+	return domain.UserFromModel(user), nil
 }
 
-func (s *AuthService) Login(ctx context.Context, email, password string) (string, *models.User, error) {
-	user, err := s.users.GetByEmail(ctx, email)
+func (s *AuthService) Login(ctx context.Context, email, password string) (string, *domain.User, error) {
+	user, err := s.usvc.GetByEmail(ctx, email)
 	if err != nil {
 		return "", nil, ErrInvalidCredentials
 	}
@@ -63,16 +64,20 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 		return "", nil, ErrInvalidCredentials
 	}
 
-	token, err := s.generateJWT(user.ID)
+	token, err := s.generateJWT(user.ID.String())
 	if err != nil {
 		return "", nil, err
 	}
 
-	return token, user, nil
+	return token, domain.UserFromModel(user), nil
 }
 
-func (s *AuthService) GetUser(ctx context.Context, id string) (*models.User, error) {
-	return s.users.GetByID(ctx, id)
+func (s *AuthService) GetUser(ctx context.Context, id string) (*domain.User, error) {
+	res, err := s.usvc.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return domain.UserFromModel(res), nil
 }
 
 func (s *AuthService) generateJWT(userID string) (string, error) {

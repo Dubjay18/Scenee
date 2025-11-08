@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/yourname/moodle/internal/auth"
-	"github.com/yourname/moodle/internal/services"
+	"github.com/Dubjay18/scenee/internal/auth"
+	"github.com/Dubjay18/scenee/internal/services"
 )
 
 type UserHandler struct{ Users *services.UserService }
