@@ -2,7 +2,9 @@ package httpserver
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
+	"sort"
 	time "time"
 
 	"github.com/go-chi/chi/v5"
@@ -48,6 +50,41 @@ func NewServer(mounters ...func(r chi.Router)) *Server {
 			}
 		}
 	})
+
+	// Log all registered routes for visibility when server starts. We collect them,
+	// sort them for deterministic logging, and then print.
+	type routeEntry struct{ method, path string }
+	// Use a map to collect methods per path, then convert to a slice so we can sort
+	routeMethods := map[string]map[string]bool{}
+	_ = chi.Walk(r, func(method string, routePath string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
+		if _, ok := routeMethods[routePath]; !ok {
+			routeMethods[routePath] = map[string]bool{}
+		}
+		routeMethods[routePath][method] = true
+		return nil
+	})
+	routes := make([]routeEntry, 0)
+	for path, methods := range routeMethods {
+		// If GET exists, skip HEAD to avoid duplicates
+		if methods["GET"] && methods["HEAD"] {
+			delete(methods, "HEAD")
+		}
+		for m := range methods {
+			routes = append(routes, routeEntry{method: m, path: path})
+		}
+	}
+	if len(routes) > 0 {
+		sort.Slice(routes, func(i, j int) bool {
+			if routes[i].path != routes[j].path {
+				return routes[i].path < routes[j].path
+			}
+			return routes[i].method < routes[j].method
+		})
+		log.Println("registered routes:")
+		for _, r := range routes {
+			log.Printf("%s %s", r.method, r.path)
+		}
+	}
 
 	return &Server{Router: r}
 }

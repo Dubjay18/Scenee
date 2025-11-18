@@ -13,7 +13,6 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/Dubjay18/scenee/internal/ai"
 	"github.com/Dubjay18/scenee/internal/auth"
 	"github.com/Dubjay18/scenee/internal/handlers"
@@ -21,17 +20,21 @@ import (
 	"github.com/Dubjay18/scenee/internal/repositories"
 	"github.com/Dubjay18/scenee/internal/services"
 	"github.com/Dubjay18/scenee/internal/tmdb"
+	"github.com/go-chi/chi/v5"
 )
 
 type Config struct {
 	Port         string `envconfig:"PORT" default:"8080"`
-	DatabaseURL  string `envconfig:"DATABASE_URL" required:"true"`
+	DatabaseURL  string `envconfig:"DATABASE_URL" required:"false"`
+	MigrationURL string `envconfig:"MIGRATION_URL" required:"false"`
 	JWTSecret    string `envconfig:"JWT_SECRET" required:"true"`
 	ClientURL    string `envconfig:"CLIENT_URL" default:"exp://192.168.0.5:8081/--/auth"`
 	TMDBAPIKey   string `envconfig:"TMDB_API_KEY" required:"true"`
 	TMDBBaseURL  string `envconfig:"TMDB_BASE_URL" default:"https://api.themoviedb.org/3"`
 	GeminiAPIKey string `envconfig:"GEMINI_API_KEY" required:"true"`
 	GeminiModel  string `envconfig:"GEMINI_MODEL" default:"gemini-1.5-flash"`
+	EnSendProjectID     string `envconfig:"ENSEND_PROJECT_ID" required:"true"`
+	EnSendProjectSecret string `envconfig:"ENSEND_PROJECT_SECRET" required:"true"`
 }
 
 func mustLoadEnv() Config {
@@ -39,6 +42,14 @@ func mustLoadEnv() Config {
 	var c Config
 	if err := envconfig.Process("", &c); err != nil {
 		log.Fatalf("env error: %v", err)
+	}
+	// Prefer MIGRATION_URL (direct DB connection) when present. This mirrors the Makefile
+	// behavior which uses MIGRATION_URL for direct connections (bypassing poolers like PgBouncer).
+	if c.MigrationURL != "" {
+		c.DatabaseURL = c.MigrationURL
+	}
+	if c.DatabaseURL == "" {
+		log.Fatalf("env error: DATABASE_URL or MIGRATION_URL must be set")
 	}
 	return c
 }
@@ -71,7 +82,7 @@ func main() {
 	userService := services.NewUserService(userRepo)
 	watchlistService := services.NewWatchlistService(watchlistRepo, tmdbClient)
 	aiService := services.NewAIService(aiClient)
-	authService := services.NewAuthService(userService, cfg.JWTSecret)
+	authService := services.NewAuthService(userService, cfg.JWTSecret, cfg.EnSendProjectID, cfg.EnSendProjectSecret)
 
 	// Handlers
 	wlHandler := handlers.NewWatchlistHandler(watchlistService)

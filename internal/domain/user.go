@@ -9,14 +9,14 @@ import (
 
 // User represents a user in the domain layer
 type User struct {
-	ID        uuid.UUID
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Bio       string
-	Email     string
-	Username  string
-	Password  string
-	AvatarUrl string
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Bio       string    `json:"bio"`
+	Email     string    `json:"email"`
+	Username  string    `json:"username"`
+	Password  string    `json:"-"`
+	AvatarUrl string    `json:"avatar_url"`
 }
 
 // FromModel converts models.User to domain.User

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -20,12 +21,17 @@ var (
 type AuthService struct {
 	usvc      *UserService
 	jwtSecret string
+	nsvc 	*NotificationService
 }
 
-func NewAuthService(usvc *UserService, jwtSecret string) *AuthService {
+func NewAuthService(usvc *UserService, jwtSecret string, ensendProjectId string, ensendProjectSecret string) *AuthService {
 	return &AuthService{
 		usvc:      usvc,
 		jwtSecret: jwtSecret,
+		nsvc: NewNotificationService(NotificationConfig{
+			EnSendProjectID:     ensendProjectId,
+			EnSendProjectSecret: ensendProjectSecret,
+		}),
 	}
 }
 
@@ -51,6 +57,15 @@ func (s *AuthService) Register(ctx context.Context, email, username, password st
 		return nil, err
 	}
 
+	// Send welcome email
+	subject := "Welcome to Scenee!"
+	body := "Hi " + username + ", Thank you for registering with Scenee. We're excited to have you on board!"
+
+	err = s.nsvc.SendEmailNotification(email, subject, body)
+	if err != nil {
+		// Log the error, but don't fail the registration
+		 log.Printf("Failed to send welcome email to %s: %v", email, err)
+	}
 	return domain.UserFromModel(user), nil
 }
 
