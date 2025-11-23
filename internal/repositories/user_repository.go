@@ -13,6 +13,8 @@ type UserRepository interface {
 	Upsert(ctx context.Context, user *models.User) error
 	GetByID(ctx context.Context, id string) (*models.User, error)
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
+	Update(ctx context.Context, id string, updates map[string]interface{}) error
+	Delete(ctx context.Context, id string) error
 }
 
 type GormUserRepository struct {
@@ -44,4 +46,12 @@ func (r *GormUserRepository) GetByEmail(ctx context.Context, email string) (*mod
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (r *GormUserRepository) Update(ctx context.Context, id string, updates map[string]interface{}) error {
+	return r.db.WithContext(ctx).Model(&models.User{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *GormUserRepository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Delete(&models.User{}, "id = ?", id).Error
 }

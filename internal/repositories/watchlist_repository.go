@@ -6,8 +6,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"github.com/google/uuid"
 	"github.com/Dubjay18/scenee/internal/models"
+	"github.com/google/uuid"
 )
 
 type WatchlistRepository interface {
@@ -17,6 +17,7 @@ type WatchlistRepository interface {
 	Save(ctx context.Context, userID, watchlistID string) error
 	Unsave(ctx context.Context, userID, watchlistID string) error
 	GetByID(ctx context.Context, id string) (*models.Watchlist, error)
+	GetBySlug(ctx context.Context, slug string) (*models.Watchlist, error)
 	ListByOwner(ctx context.Context, owner string) ([]models.Watchlist, error)
 	ListPublicByOwner(ctx context.Context, owner string) ([]models.Watchlist, error)
 	EnsureOwner(ctx context.Context, watchlistID, owner string) error
@@ -108,6 +109,14 @@ func (r *GormWatchlistRepository) Delete(ctx context.Context, id, owner string) 
 func (r *GormWatchlistRepository) GetByID(ctx context.Context, id string) (*models.Watchlist, error) {
 	var watchlist models.Watchlist
 	if err := r.db.WithContext(ctx).Preload("Items", func(tx *gorm.DB) *gorm.DB { return tx.Order("position ASC") }).First(&watchlist, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &watchlist, nil
+}
+
+func (r *GormWatchlistRepository) GetBySlug(ctx context.Context, slug string) (*models.Watchlist, error) {
+	var watchlist models.Watchlist
+	if err := r.db.WithContext(ctx).Preload("Items", func(tx *gorm.DB) *gorm.DB { return tx.Order("position ASC") }).Where("slug = ? AND visibility = 'public'", slug).First(&watchlist).Error; err != nil {
 		return nil, err
 	}
 	return &watchlist, nil

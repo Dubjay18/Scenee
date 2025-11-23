@@ -26,3 +26,36 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewEncoder(w).Encode(u)
 }
+
+func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	uid := auth.UserID(r.Context())
+	if uid == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var updates map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid json"})
+		return
+	}
+
+	// Only allow updating bio and avatar_url
+	allowedFields := map[string]bool{"bio": true, "avatar_url": true}
+	filteredUpdates := make(map[string]interface{})
+	for k, v := range updates {
+		if allowedFields[k] {
+			filteredUpdates[k] = v
+		}
+	}
+
+	if err := h.Users.Update(r.Context(), uid, filteredUpdates); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "failed to update user"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "profile updated"})
+}

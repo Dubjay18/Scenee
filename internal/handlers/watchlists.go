@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/Dubjay18/scenee/internal/auth"
@@ -15,10 +16,13 @@ import (
 	"github.com/Dubjay18/scenee/internal/validate"
 )
 
-type WatchlistHandler struct{ Service *services.WatchlistService }
+type WatchlistHandler struct {
+	Service *services.WatchlistService
+	DB      *gorm.DB
+}
 
-func NewWatchlistHandler(s *services.WatchlistService) *WatchlistHandler {
-	return &WatchlistHandler{Service: s}
+func NewWatchlistHandler(s *services.WatchlistService, db *gorm.DB) *WatchlistHandler {
+	return &WatchlistHandler{Service: s, DB: db}
 }
 
 // Routes is mounted under /watchlists in main.
@@ -38,6 +42,23 @@ func (h *WatchlistHandler) Routes(r chi.Router) {
 	r.Post("/{id}/save", h.save)
 }
 
+func (h *WatchlistHandler) GetPublic(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	wl, err := h.Service.GetBySlug(r.Context(), slug)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "watchlist not found"})
+		return
+	}
+	// Increment view count
+	h.DB.WithContext(r.Context()).Model(&models.Watchlist{}).Where("id = ?", wl.ID).Update("view_count", gorm.Expr("view_count + 1"))
+	_ = json.NewEncoder(w).Encode(wl)
+}
+
 func (h *WatchlistHandler) save(w http.ResponseWriter, r *http.Request) {
 	uid := auth.UserID(r.Context())
 	if uid == "" {
@@ -54,6 +75,20 @@ func (h *WatchlistHandler) save(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
+	}
+	// Create notification
+	wl, err := h.Service.GetByID(r.Context(), wlID)
+	if err == nil && wl.OwnerID != uid {
+		// Notify the owner
+		actorUUID, _ := uuid.Parse(uid)
+		ownerUUID, _ := uuid.Parse(wl.OwnerID)
+		notification := models.Notification{
+			UserID:   ownerUUID,
+			Type:     "save",
+			ActorID:  actorUUID,
+			EntityID: wl.ID, // the watchlist
+		}
+		h.DB.WithContext(r.Context()).Create(&notification)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -208,9 +243,10 @@ func (h *WatchlistHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	type bodyT struct {
-		Title       *string `validate:"omitempty,min=1,max=200"`
-		Description *string `validate:"omitempty,max=1000"`
-		Visibility  *string `validate:"omitempty,oneof=public private unlisted"`
+		Title       *string   `validate:"omitempty,min=1,max=200"`
+		Description *string   `validate:"omitempty,max=1000"`
+		Visibility  *string   `validate:"omitempty,oneof=public private unlisted"`
+		Tags        *[]string `validate:"omitempty"`
 	}
 	var b bodyT
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
@@ -232,6 +268,9 @@ func (h *WatchlistHandler) update(w http.ResponseWriter, r *http.Request) {
 		if b.Visibility != nil {
 			existing.Visibility = *b.Visibility
 		}
+		if b.Tags != nil {
+			existing.Tags = *b.Tags
+		}
 	})
 	if err != nil {
 		switch {
@@ -244,7 +283,7 @@ func (h *WatchlistHandler) update(w http.ResponseWriter, r *http.Request) {
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
-		if err!= nil {
+		if err != nil {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		}
 		return
@@ -268,7 +307,7 @@ func (h *WatchlistHandler) delete(w http.ResponseWriter, r *http.Request) {
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
-		if err!= nil {
+		if err != nil {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		}
 		return
@@ -357,6 +396,20 @@ func (h *WatchlistHandler) like(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
+	}
+	// Create notification
+	wl, err := h.Service.GetByID(r.Context(), wlID)
+	if err == nil && wl.OwnerID != uid {
+		// Notify the owner
+		actorUUID, _ := uuid.Parse(uid)
+		ownerUUID, _ := uuid.Parse(wl.OwnerID)
+		notification := models.Notification{
+			UserID:   ownerUUID,
+			Type:     "like",
+			ActorID:  actorUUID,
+			EntityID: wl.ID, // the watchlist
+		}
+		h.DB.WithContext(r.Context()).Create(&notification)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -26,3 +26,19 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*models.User, err
 func (s *UserService) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	return s.users.GetByEmail(ctx, email)
 }
+
+func (s *UserService) Update(ctx context.Context, id string, updates map[string]interface{}) error {
+	return s.users.Update(ctx, id, updates)
+}
+
+func (s *UserService) GetRole(ctx context.Context, id string) (string, error) {
+	user, err := s.users.GetByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return user.Role, nil
+}
+
+func (s *UserService) Delete(ctx context.Context, id string) error {
+	return s.users.Delete(ctx, id)
+}

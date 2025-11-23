@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/Dubjay18/scenee/internal/cache"
 	"github.com/Dubjay18/scenee/internal/domain"
 	"github.com/Dubjay18/scenee/internal/models"
 	"github.com/Dubjay18/scenee/internal/repositories"
 	"github.com/Dubjay18/scenee/internal/tmdb"
+	"github.com/google/uuid"
 )
 
 var (
@@ -154,6 +154,14 @@ func (s *WatchlistService) Unlike(ctx context.Context, owner, watchlistID string
 		return ErrUnauthorized
 	}
 	return s.watchlists.Unlike(ctx, owner, watchlistID)
+}
+
+func (s *WatchlistService) GetByID(ctx context.Context, id string) (*models.Watchlist, error) {
+	return s.watchlists.GetByID(ctx, id)
+}
+
+func (s *WatchlistService) GetBySlug(ctx context.Context, slug string) (*models.Watchlist, error) {
+	return s.watchlists.GetBySlug(ctx, slug)
 }
 
 type FeedOptions struct {

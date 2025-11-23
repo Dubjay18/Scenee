@@ -7,7 +7,8 @@ CREATE EXTENSION IF NOT EXISTS citext;
 -- Update users table: add bio, password, and rename avatar to avatar_url
 ALTER TABLE users 
     ADD COLUMN IF NOT EXISTS bio text,
-    ADD COLUMN IF NOT EXISTS password text;
+    ADD COLUMN IF NOT EXISTS password text,
+    ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user';
 
 -- Rename avatar column if it exists (handle if already renamed)
 DO $$
@@ -18,6 +19,19 @@ BEGIN
     END IF;
 END $$;
 
+-- Add check constraint for role
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'users_role_check'
+    ) THEN
+        ALTER TABLE users 
+            ADD CONSTRAINT users_role_check 
+            CHECK (role IN ('user', 'admin'));
+    END IF;
+END $$;
+
 -- Update watchlists table: add new columns and modify structure
 ALTER TABLE watchlists
     ADD COLUMN IF NOT EXISTS slug citext,
@@ -25,8 +39,10 @@ ALTER TABLE watchlists
     ADD COLUMN IF NOT EXISTS like_count int NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS save_count int NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS item_count int NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS view_count int NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'private',
-    ADD COLUMN IF NOT EXISTS saved_by jsonb DEFAULT '[]';
+    ADD COLUMN IF NOT EXISTS saved_by jsonb DEFAULT '[]',
+    ADD COLUMN IF NOT EXISTS tags jsonb DEFAULT '[]';
 
 -- Generate unique slugs for existing rows if slug was just added
 UPDATE watchlists SET slug = id::text WHERE slug IS NULL;
@@ -152,17 +168,21 @@ CREATE TABLE IF NOT EXISTS saves (
 CREATE INDEX IF NOT EXISTS idx_saves_watchlist_id ON saves(watchlist_id);
 CREATE INDEX IF NOT EXISTS idx_saves_created_at ON saves(created_at);
 
--- Create follows table (for following users)
-CREATE TABLE IF NOT EXISTS follows (
-    follower_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    followee_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+-- Create reviews table
+CREATE TABLE IF NOT EXISTS reviews (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    movie_id uuid NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
+    rating int NOT NULL CHECK (rating >= 1 AND rating <= 10),
+    review text,
     created_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (follower_id, followee_id)
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    deleted_at timestamptz
 );
 
-CREATE INDEX IF NOT EXISTS idx_follows_follower_id ON follows(follower_id);
-CREATE INDEX IF NOT EXISTS idx_follows_followee_id ON follows(followee_id);
-CREATE INDEX IF NOT EXISTS idx_follows_created_at ON follows(created_at);
+CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews(user_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_movie_id ON reviews(movie_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_created_at ON reviews(created_at);
 
 -- Update likes table to use composite primary key
 -- First, check if likes table needs restructuring
@@ -207,6 +227,7 @@ DROP TABLE IF EXISTS follows CASCADE;
 DROP TABLE IF EXISTS saves CASCADE;
 DROP TABLE IF EXISTS activities CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS reviews CASCADE;
 
 -- Restore likes table with id if needed
 DO $$
@@ -264,14 +285,18 @@ ALTER TABLE watchlists
     DROP COLUMN IF EXISTS like_count,
     DROP COLUMN IF EXISTS save_count,
     DROP COLUMN IF EXISTS item_count,
+    DROP COLUMN IF EXISTS view_count,
     DROP COLUMN IF EXISTS visibility,
     DROP COLUMN IF EXISTS saved_by,
+    DROP COLUMN IF EXISTS tags,
     ADD COLUMN IF NOT EXISTS is_public boolean NOT NULL DEFAULT true;
 
 -- Restore users columns
 ALTER TABLE users
+    DROP CONSTRAINT IF EXISTS users_role_check,
     DROP COLUMN IF EXISTS bio,
-    DROP COLUMN IF EXISTS password;
+    DROP COLUMN IF EXISTS password,
+    DROP COLUMN IF EXISTS role;
 
 DO $$
 BEGIN

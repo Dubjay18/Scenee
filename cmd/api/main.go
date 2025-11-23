@@ -24,15 +24,15 @@ import (
 )
 
 type Config struct {
-	Port         string `envconfig:"PORT" default:"8080"`
-	DatabaseURL  string `envconfig:"DATABASE_URL" required:"false"`
-	MigrationURL string `envconfig:"MIGRATION_URL" required:"false"`
-	JWTSecret    string `envconfig:"JWT_SECRET" required:"true"`
-	ClientURL    string `envconfig:"CLIENT_URL" default:"exp://192.168.0.5:8081/--/auth"`
-	TMDBAPIKey   string `envconfig:"TMDB_API_KEY" required:"true"`
-	TMDBBaseURL  string `envconfig:"TMDB_BASE_URL" default:"https://api.themoviedb.org/3"`
-	GeminiAPIKey string `envconfig:"GEMINI_API_KEY" required:"true"`
-	GeminiModel  string `envconfig:"GEMINI_MODEL" default:"gemini-1.5-flash"`
+	Port                string `envconfig:"PORT" default:"8080"`
+	DatabaseURL         string `envconfig:"DATABASE_URL" required:"false"`
+	MigrationURL        string `envconfig:"MIGRATION_URL" required:"false"`
+	JWTSecret           string `envconfig:"JWT_SECRET" required:"true"`
+	ClientURL           string `envconfig:"CLIENT_URL" default:"exp://192.168.0.5:8081/--/auth"`
+	TMDBAPIKey          string `envconfig:"TMDB_API_KEY" required:"true"`
+	TMDBBaseURL         string `envconfig:"TMDB_BASE_URL" default:"https://api.themoviedb.org/3"`
+	GeminiAPIKey        string `envconfig:"GEMINI_API_KEY" required:"true"`
+	GeminiModel         string `envconfig:"GEMINI_MODEL" default:"gemini-1.5-flash"`
 	EnSendProjectID     string `envconfig:"ENSEND_PROJECT_ID" required:"true"`
 	EnSendProjectSecret string `envconfig:"ENSEND_PROJECT_SECRET" required:"true"`
 }
@@ -77,18 +77,28 @@ func main() {
 	// Repositories
 	userRepo := repositories.NewUserRepository(db)
 	watchlistRepo := repositories.NewWatchlistRepository(db)
+	followRepo := repositories.NewFollowRepository(db)
+	reviewRepo := repositories.NewReviewRepository(db)
 
 	// Services
 	userService := services.NewUserService(userRepo)
 	watchlistService := services.NewWatchlistService(watchlistRepo, tmdbClient)
 	aiService := services.NewAIService(aiClient)
 	authService := services.NewAuthService(userService, cfg.JWTSecret, cfg.EnSendProjectID, cfg.EnSendProjectSecret)
+	followService := services.NewFollowService(followRepo)
+	reviewService := services.NewReviewService(reviewRepo)
 
 	// Handlers
-	wlHandler := handlers.NewWatchlistHandler(watchlistService)
+	wlHandler := handlers.NewWatchlistHandler(watchlistService, db)
 	aiHandler := handlers.NewAIHandler(aiService)
 	userHandler := handlers.NewUserHandler(userService)
 	authHandler := handlers.NewAuthHandler(authService)
+	followHandler := handlers.NewFollowHandler(followService, db)
+	notificationHandler := handlers.NewNotificationHandler(db)
+	reviewHandler := handlers.NewReviewHandler(reviewService)
+	discoverHandler := handlers.NewDiscoverHandler(watchlistService)
+	adminHandler := handlers.NewAdminHandler(userService)
+	statsHandler := handlers.NewStatsHandler(db)
 
 	// Auth middleware
 	verifier := auth.NewJWTVerifier(cfg.JWTSecret)
@@ -99,6 +109,8 @@ func main() {
 			r.Get("/search/movies", wlHandler.SearchMovies)
 			r.Get("/movies/{id}", wlHandler.Movie)
 			r.Get("/feed", wlHandler.Feed)
+			r.Get("/watchlists/public/{slug}", wlHandler.GetPublic)
+			r.Route("/discover", discoverHandler.Routes)
 			r.Post("/ai/ask", aiHandler.Ask)
 			// Auth routes (public)
 			r.Route("/auth", authHandler.Routes)
@@ -107,9 +119,25 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(verifier.Middleware)
 			r.Get("/me", userHandler.Me)
+			r.Patch("/me", userHandler.UpdateMe)
 			r.Route("/watchlists", wlHandler.Routes)
 			// trending can be public but keep here for now or move above
 			r.Get("/trending", wlHandler.Trending)
+			r.Route("/users/{id}", func(r chi.Router) {
+				r.Post("/follow", followHandler.Follow)
+				r.Delete("/follow", followHandler.Unfollow)
+				r.Get("/followers", followHandler.GetFollowers)
+				r.Get("/following", followHandler.GetFollowing)
+			})
+			r.Route("/movies/{id}/reviews", func(r chi.Router) {
+				r.Get("/", reviewHandler.GetByMovie)
+				r.Post("/", reviewHandler.Create)
+				r.Put("/", reviewHandler.Update)
+				r.Delete("/{reviewID}", reviewHandler.Delete)
+			})
+			r.Delete("/admin/users/{id}", adminHandler.DeleteUser)
+			r.Get("/stats", statsHandler.GetStats)
+			r.Route("/notifications", notificationHandler.Routes)
 		})
 	}
 

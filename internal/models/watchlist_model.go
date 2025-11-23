@@ -23,8 +23,10 @@ type Watchlist struct {
 	LikeCount   int      `gorm:"default:0" json:"like_count"`
 	SaveCount   int      `gorm:"default:0" json:"save_count"`
 	ItemCount   int      `gorm:"default:0" json:"item_count"`
+	ViewCount   int      `gorm:"default:0" json:"view_count"`
 	Visibility  string   `gorm:"type:text;not null;check:visibility IN ('public','private','unlisted');default:'private'" json:"visibility"`
 	SavedBy     []string `gorm:"type:jsonb;default:'[]'" json:"-"`
+	Tags        []string `gorm:"type:jsonb;default:'[]'" json:"tags"`
 }
 
 type WatchlistItem struct {

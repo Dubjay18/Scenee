@@ -17,4 +17,5 @@ type User struct {
 	Username  string         `gorm:"uniqueIndex" json:"username"`
 	Password  string         `gorm:"not null" json:"-"`
 	AvatarUrl string         `json:"avatar_url"`
+	Role      string         `gorm:"type:text;not null;default:'user';check:role IN ('user','admin')" json:"role"`
 }
