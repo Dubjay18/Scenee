@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -148,8 +149,10 @@ func (h *WatchlistHandler) Trending(w http.ResponseWriter, r *http.Request) {
 			q.Limit = n
 		}
 	}
+	
 	if errs := validate.Map(q); errs != nil {
 		w.WriteHeader(http.StatusBadRequest)
+		fmt.Println(errs)
 		_ = json.NewEncoder(w).Encode(errs)
 		return
 	}
@@ -460,6 +463,7 @@ func (h *WatchlistHandler) Feed(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if errs := validate.Map(q); errs != nil {
+			fmt.Println(errs)
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(errs)
 		return

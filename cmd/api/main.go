@@ -38,7 +38,7 @@ type Config struct {
 }
 
 func mustLoadEnv() Config {
-	_ = godotenv.Load()
+	_ = godotenv.Load() // Load .env from current working directory
 	var c Config
 	if err := envconfig.Process("", &c); err != nil {
 		log.Fatalf("env error: %v", err)

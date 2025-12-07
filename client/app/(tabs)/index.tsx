@@ -3,6 +3,8 @@ import { Text } from '../../components/Themed';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useFeed, useTrendingWatchlists } from '@/api';
+import { MovieMapper } from '@/lib/utils';
 
 const PRIMARY_COLOR = '#A855F7';
 const BACKGROUND_DARK = '#0A0A0A';
@@ -85,6 +87,7 @@ const recommendedMovies = [
   },
 ];
 
+
 const WatchlistCard = ({ item }: { item: typeof trendingWatchlists[0] }) => (
   <Pressable style={styles.watchlistCard} onPress={() => router.push(`/watchlist/${item.id}`)}>
     <Image source={{ uri: item.image }} style={styles.watchlistImage} />
@@ -122,24 +125,42 @@ const WatchlistCard = ({ item }: { item: typeof trendingWatchlists[0] }) => (
   </Pressable>
 );
 
-const MovieCard = ({ item }: { item: typeof recommendedMovies[0] }) => (
+const MovieCard = ({ item }: { item: ReturnType<typeof MovieMapper> }) => (
   <View style={styles.movieCard}>
     <View style={styles.moviePosterContainer}>
-      <Image source={{ uri: item.image }} style={styles.moviePoster} />
-      {item.badge && (
+      {
+item.posterUrl ?
+      <Image source={{ uri: item.posterUrl }} style={styles.moviePoster} />
+      : <View style={[styles.moviePoster, {alignItems:'center', justifyContent:'center'}]}>
+        <Text style={{color:TEXT_SECONDARY, textAlign:'center', paddingHorizontal:8}}>No Image Available</Text>
+      </View>
+      }
+      {/* {item.badge && (
         <View style={[styles.movieBadge, { backgroundColor: `${item.badgeColor}CC` }]}>
           <Text style={styles.movieBadgeText}>{item.badge}</Text>
         </View>
-      )}
+      )} */}
     </View>
     <View style={styles.movieInfo}>
       <Text style={styles.movieTitle} numberOfLines={1}>{item.title}</Text>
-      <Text style={styles.movieGenre} numberOfLines={1}>{item.genre}, {item.year}</Text>
+      <Text style={styles.movieGenre} numberOfLines={1}>{item.releaseDate}</Text>
     </View>
   </View>
 );
 
 export default function HomeScreen() {
+  const {data: watchlists, isLoading,error} = useFeed()
+  if(isLoading){
+    return (
+      <View style={styles.container}>
+        <SafeAreaView edges={['top']} style={styles.safeArea}>
+          <Text style={{color: TEXT_PRIMARY, padding: 16}}>Loading...</Text>
+        </SafeAreaView>
+      </View>
+    )
+  }
+  console.log(watchlists,error?.message,"wl");
+  
   return (
     <View style={styles.container}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -150,7 +171,7 @@ export default function HomeScreen() {
             <Text style={styles.headerTitle}>Watchlyst</Text>
           </View>
           <View style={styles.headerRight}>
-            <Pressable style={styles.headerButton} onPress={() => router.push('search')}>
+            <Pressable style={styles.headerButton} onPress={() => router.push('/search')}>
               <MaterialIcons name="search" size={26} color={TEXT_PRIMARY} />
             </Pressable>
             <Pressable style={styles.headerButton}>
@@ -187,9 +208,13 @@ export default function HomeScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.horizontalScrollContent}
             >
-              {recommendedMovies.map((item) => (
-                <MovieCard key={item.id} item={item} />
-              ))}
+                         {watchlists?.results?.map((item) => {
+                const mappedMovie = MovieMapper(item)
+                return(
+
+                  <MovieCard key={mappedMovie.id} item={mappedMovie} />
+                )
+})}
             </ScrollView>
           </View>
         </ScrollView>

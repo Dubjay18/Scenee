@@ -68,14 +68,14 @@ const Index = () => {
             <View style={styles.ctaSection}>
               <Pressable style={styles.createAccountButton}
                 onPress={()=>{
-                    router.push("/(tabs)")
+                    router.push("/(auth)/register" as any)
                 }}
               >
                 <Text style={styles.createAccountText}>Create an Account</Text>
               </Pressable>
               <View style={styles.loginContainer}>
                 <Text style={styles.loginText}>Already have an account? </Text>
-                <Pressable>
+                <Pressable onPress={() => router.push("/(auth)/login" as any)}>
                   <Text style={styles.loginLink}>Log In</Text>
                 </Pressable>
               </View>

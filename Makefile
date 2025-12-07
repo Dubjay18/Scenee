@@ -86,3 +86,7 @@ psql "$$DB_DSN" -c 'DROP TABLE IF EXISTS $(MIGRATIONS_TABLE);'
 
 goose:
 	@command -v goose >/dev/null 2>&1 || go install github.com/pressly/goose/v3/cmd/goose@latest
+
+run-mobile:
+	@echo "Starting mobile server..."
+	npx expo start ./client

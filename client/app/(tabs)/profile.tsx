@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { useAuth } from '../../providers/AuthProvider';
+import { useMe } from '../../api';
 
 const BACKGROUND_DARK = '#0a0a0a';
 const TEXT_PRIMARY = '#EAEAEA';
@@ -104,6 +106,15 @@ const WatchlistCard = ({ watchlist }: { watchlist: typeof userWatchlists[0] }) =
 
 export default function ProfileScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const { logout, user } = useAuth();
+  const { data: currentUser } = useMe();
+
+  // Use API data if available, fallback to mock data
+  const displayUser = currentUser || user;
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   return (
     <View style={styles.container}>
@@ -112,9 +123,14 @@ export default function ProfileScreen() {
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>Profile</Text>
-          <Pressable style={styles.settingsButton}>
-            <MaterialIcons name="settings" size={28} color={TEXT_PRIMARY} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable style={styles.logoutButton} onPress={handleLogout}>
+              <MaterialIcons name="logout" size={24} color={TEXT_SECONDARY} />
+            </Pressable>
+            <Pressable style={styles.settingsButton}>
+              <MaterialIcons name="settings" size={28} color={TEXT_PRIMARY} />
+            </Pressable>
+          </View>
         </View>
 
         <ScrollView
@@ -126,13 +142,20 @@ export default function ProfileScreen() {
           <View style={styles.profileSection}>
             {/* Avatar */}
             <View style={styles.avatarContainer}>
-              <Image source={{ uri: userData.avatar }} style={styles.avatar} />
+              <Image 
+                source={{ uri: displayUser?.avatar_url || userData.avatar }} 
+                style={styles.avatar} 
+              />
             </View>
 
             {/* User Info */}
             <View style={styles.userInfo}>
-              <Text style={styles.username}>{userData.username}</Text>
-              <Text style={styles.bio}>{userData.bio}</Text>
+              <Text style={styles.username}>
+                @{displayUser?.username || userData.username}
+              </Text>
+              <Text style={styles.bio}>
+                {displayUser?.bio || userData.bio}
+              </Text>
             </View>
           </View>
 
@@ -220,9 +243,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   settingsButton: {
-    width: 48,
-    height: 48,
-    alignItems: 'flex-end',
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  logoutButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   scrollView: {
